@@ -103,6 +103,13 @@ CREATE TABLE Empresas_Creadas (
   Usuario_Respaldo_Nube VARCHAR(100),        -- Usuario del login del ERP que realizó el último respaldo a la nube
   Ubicacion_Respaldo_Otra_Unidad VARCHAR(500), -- Ruta/ubicación del último respaldo en otra unidad
   Usuario_Respaldo_Otra_Unidad VARCHAR(100),  -- Usuario del login del ERP que realizó el último respaldo a otra unidad
+  Fecha_Ultimo_Respaldo_BD_General_Nube DATETIME, -- Fecha del último respaldo de BD general a la nube/servidor
+  Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad DATETIME, -- Fecha del último respaldo de BD general a otra unidad/carpeta
+  Contador_Respaldos_BD_General_Nube INT DEFAULT 0, -- Contador de respaldos de BD general realizados a la nube
+  Contador_Respaldos_BD_General_Otra_Unidad INT DEFAULT 0, -- Contador de respaldos de BD general realizados a otra unidad
+  Usuario_Respaldo_BD_General_Nube VARCHAR(100), -- Usuario del login del ERP que realizó el último respaldo de BD general a la nube
+  Ubicacion_Respaldo_BD_General_Otra_Unidad VARCHAR(500), -- Ruta/ubicación del último respaldo de BD general en otra unidad
+  Usuario_Respaldo_BD_General_Otra_Unidad VARCHAR(100), -- Usuario del login del ERP que realizó el último respaldo de BD general a otra unidad
   PRIMARY KEY (id),
   UNIQUE KEY idx_ruc_creado (RUC, RUC_Creado)  -- Clave única: un solo registro por empresa/base de datos
 );
@@ -264,83 +271,187 @@ CREATE TABLE Empresas_Creadas (
 
 **Endpoint**: `Actualizar_Respaldo_Empresa_Creada.php`
 
-**Propósito**: Actualizar información de respaldos de una empresa/base de datos. Soporta respaldos a la nube/servidor y respaldos a otra unidad/carpeta. Aplica tanto a la empresa dueña como a empresas creadas.
+**Propósito**: Actualizar información de respaldos de una empresa/base de datos. Soporta respaldos a la nube/servidor y respaldos a otra unidad/carpeta, tanto para la empresa creada como para la base de datos general (compartida por todas las empresas del cliente). Aplica tanto a la empresa dueña como a empresas creadas.
 
 **Parámetros requeridos**:
 - `RUC`: RUC de la empresa dueña de la licencia (máximo 13 caracteres)
 - `RUC_Creado`: RUC de la empresa/base de datos utilizada (máximo 13 caracteres)
+- `Sistema`: Sistema que genera el respaldo. Valores: `"FSOFT"`, `"LSOFT"` o `"LSOFTW"`
+- `Nombre_Respaldo`: Nombre completo del archivo de respaldo (puede incluir ruta completa si es otra unidad)
 
-**Parámetros opcionales para respaldo a nube**:
-- `Fecha_Respaldo_Nube`: Fecha del respaldo a la nube (formato YYYY-MM-DD HH:MM:SS). Si se proporciona, actualiza `Fecha_Ultimo_Respaldo_Nube` e incrementa `Contador_Respaldos_Nube`.
-- `Usuario_Respaldo_Nube`: Usuario del login del ERP que realizó el respaldo a la nube (máximo 100 caracteres).
+**Parámetros opcionales**:
+- `Usuario`: Usuario del login del ERP que realizó el respaldo (máximo 100 caracteres)
+- `Respaldo_BD_General`: Boolean (default: `false`). Solo necesario cuando el nombre del respaldo es de empresa creada Y también se respaldó BD general en el mismo proceso
 
-**Parámetros opcionales para respaldo a otra unidad**:
-- `Fecha_Respaldo_Otra_Unidad`: Fecha del respaldo a otra unidad (formato YYYY-MM-DD HH:MM:SS). Si se proporciona, actualiza `Fecha_Ultimo_Respaldo_Otra_Unidad` e incrementa `Contador_Respaldos_Otra_Unidad`.
-- `Ubicacion_Respaldo_Otra_Unidad`: Ruta/ubicación del respaldo en otra unidad (máximo 500 caracteres).
-- `Usuario_Respaldo_Otra_Unidad`: Usuario del login del ERP que realizó el respaldo a otra unidad (máximo 100 caracteres).
+**Extracción automática del nombre del respaldo**:
+- **Fecha y hora**: Se extrae automáticamente del nombre según el formato del sistema:
+  - **FSOFT**: Formato `XXXX_9999999999999_AAAAMMDD_HHMMSS.zip` → Extrae `AAAAMMDD_HHMMSS`
+  - **LSOFT/LSOFTW**: Formato `XXXX_9999999999999_DDMMAAAAHHMMSS_PW.BAK` → Extrae `DDMMAAAAHHMMSS`
+- **Tipo de respaldo**: 
+  - Si el nombre contiene `_general` o `_GENERAL` → Solo BD general (se ignora `Respaldo_BD_General`)
+  - Si no contiene "general" → Empresa creada (si `Respaldo_BD_General = true`, también actualiza BD general)
+- **Ubicación**:
+  - Si el nombre contiene ruta (ej: `"D:\\Respaldos\\..."`) → Otra unidad (se extrae la ruta completa)
+  - Si solo es el nombre del archivo → Nube
 
-**Nota**: Debe proporcionarse al menos `Fecha_Respaldo_Nube` o `Fecha_Respaldo_Otra_Unidad`. Los respaldos a nube y otra unidad son independientes y pueden actualizarse por separado o en la misma llamada.
+**Nota**: 
+- El sistema parsea automáticamente el nombre del respaldo para extraer fecha, tipo y ubicación.
+- Si el nombre ya indica BD general (contiene "general"), solo se actualiza BD general.
+- Si el nombre es de empresa creada y `Respaldo_BD_General = true`, se actualizan ambos en la misma llamada.
 
-**Ejemplo 1: Respaldo a nube**:
+**Ejemplo 1: Respaldo de empresa creada a nube (FSOFT, mínimo)**:
 ```json
 {
   "RUC": "0991234567001",
   "RUC_Creado": "0991234567002",
-  "Fecha_Respaldo_Nube": "2025-01-20 20:00:00",
-  "Usuario_Respaldo_Nube": "admin"
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20250120_200000.zip"
 }
 ```
 
-**Ejemplo 2: Respaldo a otra unidad**:
+**Ejemplo 2: Respaldo de empresa creada a nube con usuario (LSOFT)**:
 ```json
 {
   "RUC": "0991234567001",
   "RUC_Creado": "0991234567002",
-  "Fecha_Respaldo_Otra_Unidad": "2025-01-20 21:00:00",
-  "Ubicacion_Respaldo_Otra_Unidad": "D:\\Respaldos\\Empresa_20250120.bak",
-  "Usuario_Respaldo_Otra_Unidad": "usuario1"
+  "Sistema": "LSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20012025120000_PW.BAK",
+  "Usuario": "admin"
 }
 ```
 
-**Ejemplo 3: Ambos respaldos en la misma llamada**:
+**Ejemplo 3: Respaldo de empresa creada a otra unidad (FSOFT)**:
 ```json
 {
   "RUC": "0991234567001",
   "RUC_Creado": "0991234567002",
-  "Fecha_Respaldo_Nube": "2025-01-20 20:00:00",
-  "Usuario_Respaldo_Nube": "admin",
-  "Fecha_Respaldo_Otra_Unidad": "2025-01-20 21:00:00",
-  "Ubicacion_Respaldo_Otra_Unidad": "D:\\Respaldos\\Empresa_20250120.bak",
-  "Usuario_Respaldo_Otra_Unidad": "usuario1"
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "D:\\Respaldos\\XXXX_0991234567001_20250120_210000.zip",
+  "Usuario": "usuario1"
 }
 ```
 
-**Respuesta exitosa**:
+**Ejemplo 4: Respaldo de empresa creada + BD general a nube (mismo proceso, FSOFT)**:
+```json
+{
+  "RUC": "0991234567001",
+  "RUC_Creado": "0991234567002",
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20250120_200000.zip",
+  "Usuario": "admin",
+  "Respaldo_BD_General": true
+}
+```
+
+**Ejemplo 5: Solo BD general a nube (FSOFT, detectado del nombre)**:
+```json
+{
+  "RUC": "0991234567001",
+  "RUC_Creado": "0991234567002",
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20250120_200000_general.zip",
+  "Usuario": "admin"
+}
+```
+
+**Ejemplo 6: Solo BD general a otra unidad (LSOFT, detectado del nombre)**:
+```json
+{
+  "RUC": "0991234567001",
+  "RUC_Creado": "0991234567002",
+  "Sistema": "LSOFT",
+  "Nombre_Respaldo": "D:\\Respaldos\\XXXX_0991234567001_20012025120000_PW_GENERAL.BAK",
+  "Usuario": "usuario1"
+}
+```
+
+**Nota**: 
+- El sistema detecta automáticamente si es BD general por la presencia de `_general` o `_GENERAL` en el nombre.
+- Si el nombre es de empresa creada y `Respaldo_BD_General = true`, se actualizan ambos en la misma llamada.
+- Para respaldar tanto empresa creada como BD general a diferentes ubicaciones, se deben hacer dos llamadas separadas al endpoint.
+
+**Respuesta exitosa (Ejemplo: Respaldo a nube con BD general - adicional)**:
 ```json
 {
   "Fin": "OK",
   "Mensaje": "Información de respaldo actualizada exitosamente",
   "RUC": "0991234567001",
   "RUC_Creado": "0991234567002",
-  "Respaldo_Nube": {
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20250120_200000.zip",
+  "Fecha_Extraida": "2025-01-20 20:00:00",
+  "Usuario": "admin",
+  "Ubicacion": "NUBE",
+  "Respaldo_BD_General": "adicional",
+  "Respaldo_Empresa_Creada": {
     "Fecha_Ultimo_Respaldo_Nube": "2025-01-20 20:00:00",
-    "Contador_Respaldos_Nube": 15,
-    "Usuario_Respaldo_Nube": "admin"
+    "Contador_Respaldos_Nube": 15
   },
-  "Respaldo_Otra_Unidad": {
+  "Info_Respaldo_BD_General": {
+    "Fecha_Ultimo_Respaldo_BD_General_Nube": "2025-01-20 20:00:00",
+    "Contador_Respaldos_BD_General_Nube": 12
+  }
+}
+```
+
+**Respuesta exitosa (Ejemplo: Solo empresa creada a otra unidad)**:
+```json
+{
+  "Fin": "OK",
+  "Mensaje": "Información de respaldo actualizada exitosamente",
+  "RUC": "0991234567001",
+  "RUC_Creado": "0991234567002",
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "D:\\Respaldos\\XXXX_0991234567001_20250120_210000.zip",
+  "Fecha_Extraida": "2025-01-20 21:00:00",
+  "Usuario": "usuario1",
+  "Ubicacion": "D:\\Respaldos\\XXXX_0991234567001_20250120_210000.zip",
+  "Respaldo_BD_General": null,
+  "Respaldo_Empresa_Creada": {
     "Fecha_Ultimo_Respaldo_Otra_Unidad": "2025-01-20 21:00:00",
     "Contador_Respaldos_Otra_Unidad": 8,
-    "Ubicacion_Respaldo_Otra_Unidad": "D:\\Respaldos\\Empresa_20250120.bak",
-    "Usuario_Respaldo_Otra_Unidad": "usuario1"
+    "Ubicacion_Respaldo_Otra_Unidad": "D:\\Respaldos\\XXXX_0991234567001_20250120_210000.zip"
+  }
+}
+```
+
+**Respuesta exitosa (Ejemplo: Solo BD general a nube, detectado del nombre)**:
+```json
+{
+  "Fin": "OK",
+  "Mensaje": "Información de respaldo actualizada exitosamente",
+  "RUC": "0991234567001",
+  "RUC_Creado": "0991234567002",
+  "Sistema": "FSOFT",
+  "Nombre_Respaldo": "XXXX_0991234567001_20250120_200000_general.zip",
+  "Fecha_Extraida": "2025-01-20 20:00:00",
+  "Usuario": "admin",
+  "Ubicacion": "NUBE",
+  "Respaldo_BD_General": "solo",
+  "Info_Respaldo_BD_General": {
+    "Fecha_Ultimo_Respaldo_BD_General_Nube": "2025-01-20 20:00:00",
+    "Contador_Respaldos_BD_General_Nube": 12
   }
 }
 ```
 
 **Uso recomendado**:
-- Este endpoint debe ser llamado automáticamente por el proceso de respaldo del ERP.
-- Para respaldos a la nube: proporcionar `Fecha_Respaldo_Nube` y opcionalmente `Usuario_Respaldo_Nube`.
-- Para respaldos a otra unidad: proporcionar `Fecha_Respaldo_Otra_Unidad` y opcionalmente `Ubicacion_Respaldo_Otra_Unidad` y `Usuario_Respaldo_Otra_Unidad`.
-- Si el proceso de respaldo está apagado o falla, no se actualizará la fecha correspondiente, permitiendo detectar empresas sin respaldo reciente.
+- Este endpoint debe ser llamado automáticamente por el proceso de respaldo del ERP después de cada respaldo exitoso.
+- **Parámetros mínimos**: `RUC`, `RUC_Creado`, `Sistema`, `Nombre_Respaldo` (siempre requeridos).
+- **Extracción automática**: El sistema parsea el nombre del respaldo para extraer:
+  - **Fecha/hora**: Según el formato del sistema (FSOFT: `AAAAMMDD_HHMMSS`, LSOFT/LSOFTW: `DDMMAAAAHHMMSS`)
+  - **Tipo de respaldo**: Si contiene `_general` o `_GENERAL` → BD general, si no → empresa creada
+  - **Ubicación**: Si contiene ruta (ej: `D:\\`) → otra unidad, si no → nube
+- **Respaldo de BD general**: 
+  - Si el nombre contiene "general" → solo se actualiza BD general (se ignora `Respaldo_BD_General`)
+  - Si el nombre es empresa creada y `Respaldo_BD_General = true` → se actualizan ambos (empresa creada + BD general)
+  - Si el nombre es empresa creada y `Respaldo_BD_General = false` o se omite → solo empresa creada
+- **Formatos de nombre**:
+  - **FSOFT**: `XXXX_9999999999999_AAAAMMDD_HHMMSS.zip` o `..._general.zip`
+  - **LSOFT/LSOFTW**: `XXXX_9999999999999_DDMMAAAAHHMMSS_PW.BAK` o `..._GENERAL.BAK`
+- **Importante**: 
+  - Si el proceso de respaldo está apagado o falla, no se actualizará la fecha correspondiente, permitiendo detectar empresas sin respaldo reciente.
+  - Para respaldar a diferentes ubicaciones (nube y otra unidad), hacer dos llamadas separadas.
 
 ---
 
@@ -464,12 +575,17 @@ El ERP debe llamar a `Actualizar_Respaldo_Empresa_Creada` después de realizar u
 La respuesta incluye estadísticas:
 - `Sin_Respaldo_Nube_7_Dias`: Empresas sin respaldo a la nube en los últimos 7 días
 - `Sin_Respaldo_Otra_Unidad_7_Dias`: Empresas sin respaldo a otra unidad en los últimos 7 días
+- `Sin_Respaldo_BD_General_Nube_7_Dias`: Empresas sin respaldo de BD general a la nube en los últimos 7 días
+- `Sin_Respaldo_BD_General_Otra_Unidad_7_Dias`: Empresas sin respaldo de BD general a otra unidad en los últimos 7 días
 
 Y para cada empresa:
 - `Dias_Sin_Respaldo_Nube`: Días sin respaldo a la nube (null si nunca se ha respaldado)
 - `Dias_Sin_Respaldo_Otra_Unidad`: Días sin respaldo a otra unidad (null si nunca se ha respaldado)
+- `Dias_Sin_Respaldo_BD_General_Nube`: Días sin respaldo de BD general a la nube (null si nunca se ha respaldado)
+- `Dias_Sin_Respaldo_BD_General_Otra_Unidad`: Días sin respaldo de BD general a otra unidad (null si nunca se ha respaldado)
+- Todos los campos de BD general: fechas, contadores, usuarios, ubicaciones
 
-Filtrar en la respuesta las empresas donde `Dias_Sin_Respaldo_Nube >= 7` (o el umbral deseado) para el control proactivo de respaldos a la nube.
+Filtrar en la respuesta las empresas donde `Dias_Sin_Respaldo_Nube >= 7` o `Dias_Sin_Respaldo_BD_General_Nube >= 7` (o el umbral deseado) para el control proactivo de respaldos a la nube.
 
 ### Consultar empresas sin acceso reciente
 
@@ -517,8 +633,10 @@ Todos los endpoints utilizan la misma validación de firma HMAC que los demás e
    - **ERP Web (LSOFTW)**: El registro se hace en `Registrar_Sesion` cuando se procesan licencias LSOFTW. Si el usuario está usando una empresa creada, se debe proporcionar el parámetro `RUC_Empresa_Creada` (y opcionalmente `Nombre_Empresa_Creada`) en la misma llamada a `Registrar_Sesion`. No requiere llamadas adicionales a otros endpoints.
 
 4. **Fechas de respaldo**: 
-   - **Respaldo a nube**: La fecha de respaldo a la nube (`Fecha_Ultimo_Respaldo_Nube`) debe ser actualizada por el proceso de respaldo del ERP cuando se realiza un respaldo al servidor/nube. Este es el campo principal para el control proactivo. El contador `Contador_Respaldos_Nube` se incrementa automáticamente.
-   - **Respaldo a otra unidad**: La fecha de respaldo a otra unidad (`Fecha_Ultimo_Respaldo_Otra_Unidad`) se actualiza cuando se realiza un respaldo a otra unidad/carpeta local. Se guarda también la ubicación y el usuario que lo realizó. El contador `Contador_Respaldos_Otra_Unidad` se incrementa automáticamente.
+   - **Respaldo de empresa creada a nube**: La fecha de respaldo a la nube (`Fecha_Ultimo_Respaldo_Nube`) debe ser actualizada por el proceso de respaldo del ERP cuando se realiza un respaldo al servidor/nube. Este es el campo principal para el control proactivo. El contador `Contador_Respaldos_Nube` se incrementa automáticamente.
+   - **Respaldo de empresa creada a otra unidad**: La fecha de respaldo a otra unidad (`Fecha_Ultimo_Respaldo_Otra_Unidad`) se actualiza cuando se realiza un respaldo a otra unidad/carpeta local. Se guarda también la ubicación y el usuario que lo realizó. El contador `Contador_Respaldos_Otra_Unidad` se incrementa automáticamente.
+   - **Respaldo de BD general**: La base de datos general (compartida por todas las empresas del cliente) se respalda por separado pero en el mismo proceso. Se rastrea con los campos `Fecha_Ultimo_Respaldo_BD_General_Nube`, `Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad`, contadores, usuarios y ubicaciones correspondientes. Es importante para recuperación ante desastres.
+   - **Importante**: Nunca se puede actualizar solo BD general. Siempre debe incluirse al menos el respaldo de empresa creada (o ambos en la misma llamada).
    - Si el proceso de respaldo está apagado o falla, la fecha correspondiente no se actualizará, permitiendo detectar empresas sin respaldo reciente.
 
 5. **Frecuencia de registro**: 

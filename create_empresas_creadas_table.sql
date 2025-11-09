@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS `Empresas_Creadas` (
   `Usuario_Respaldo_Nube` VARCHAR(100) DEFAULT NULL COMMENT 'Usuario del login del ERP que realizó el último respaldo a la nube',
   `Ubicacion_Respaldo_Otra_Unidad` VARCHAR(500) DEFAULT NULL COMMENT 'Ruta/ubicación del último respaldo en otra unidad',
   `Usuario_Respaldo_Otra_Unidad` VARCHAR(100) DEFAULT NULL COMMENT 'Usuario del login del ERP que realizó el último respaldo a otra unidad',
+  `Fecha_Ultimo_Respaldo_BD_General_Nube` DATETIME DEFAULT NULL COMMENT 'Fecha del último respaldo de BD general a la nube/servidor',
+  `Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad` DATETIME DEFAULT NULL COMMENT 'Fecha del último respaldo de BD general a otra unidad/carpeta',
+  `Contador_Respaldos_BD_General_Nube` INT(11) DEFAULT 0 COMMENT 'Contador de respaldos de BD general realizados a la nube',
+  `Contador_Respaldos_BD_General_Otra_Unidad` INT(11) DEFAULT 0 COMMENT 'Contador de respaldos de BD general realizados a otra unidad',
+  `Usuario_Respaldo_BD_General_Nube` VARCHAR(100) DEFAULT NULL COMMENT 'Usuario del login del ERP que realizó el último respaldo de BD general a la nube',
+  `Ubicacion_Respaldo_BD_General_Otra_Unidad` VARCHAR(500) DEFAULT NULL COMMENT 'Ruta/ubicación del último respaldo de BD general en otra unidad',
+  `Usuario_Respaldo_BD_General_Otra_Unidad` VARCHAR(100) DEFAULT NULL COMMENT 'Usuario del login del ERP que realizó el último respaldo de BD general a otra unidad',
   
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_ruc_ruc_creado` (`RUC`, `RUC_Creado`),
@@ -35,7 +42,9 @@ CREATE TABLE IF NOT EXISTS `Empresas_Creadas` (
   KEY `idx_sistema` (`Sistema`),
   KEY `idx_ultimo_acceso` (`Ultimo_Acceso`),
   KEY `idx_fecha_respaldo_nube` (`Fecha_Ultimo_Respaldo_Nube`),
-  KEY `idx_fecha_respaldo_otra_unidad` (`Fecha_Ultimo_Respaldo_Otra_Unidad`)
+  KEY `idx_fecha_respaldo_otra_unidad` (`Fecha_Ultimo_Respaldo_Otra_Unidad`),
+  KEY `idx_fecha_respaldo_bd_general_nube` (`Fecha_Ultimo_Respaldo_BD_General_Nube`),
+  KEY `idx_fecha_respaldo_bd_general_otra_unidad` (`Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad`)
 )
 ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4

@@ -75,9 +75,18 @@ try {
                 Usuario_Respaldo_Nube,
                 Ubicacion_Respaldo_Otra_Unidad,
                 Usuario_Respaldo_Otra_Unidad,
+                Fecha_Ultimo_Respaldo_BD_General_Nube,
+                Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad,
+                Contador_Respaldos_BD_General_Nube,
+                Contador_Respaldos_BD_General_Otra_Unidad,
+                Usuario_Respaldo_BD_General_Nube,
+                Ubicacion_Respaldo_BD_General_Otra_Unidad,
+                Usuario_Respaldo_BD_General_Otra_Unidad,
                 DATEDIFF(NOW(), Ultimo_Acceso) AS Dias_Sin_Acceso,
                 DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Nube) AS Dias_Sin_Respaldo_Nube,
-                DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Otra_Unidad) AS Dias_Sin_Respaldo_Otra_Unidad
+                DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Otra_Unidad) AS Dias_Sin_Respaldo_Otra_Unidad,
+                DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_BD_General_Nube) AS Dias_Sin_Respaldo_BD_General_Nube,
+                DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad) AS Dias_Sin_Respaldo_BD_General_Otra_Unidad
             FROM Empresas_Creadas
             WHERE RUC = ?';
     
@@ -132,9 +141,18 @@ try {
             'Usuario_Respaldo_Nube' => $row['Usuario_Respaldo_Nube'],
             'Ubicacion_Respaldo_Otra_Unidad' => $row['Ubicacion_Respaldo_Otra_Unidad'],
             'Usuario_Respaldo_Otra_Unidad' => $row['Usuario_Respaldo_Otra_Unidad'],
+            'Fecha_Ultimo_Respaldo_BD_General_Nube' => $row['Fecha_Ultimo_Respaldo_BD_General_Nube'],
+            'Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad' => $row['Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad'],
+            'Contador_Respaldos_BD_General_Nube' => (int)$row['Contador_Respaldos_BD_General_Nube'],
+            'Contador_Respaldos_BD_General_Otra_Unidad' => (int)$row['Contador_Respaldos_BD_General_Otra_Unidad'],
+            'Usuario_Respaldo_BD_General_Nube' => $row['Usuario_Respaldo_BD_General_Nube'],
+            'Ubicacion_Respaldo_BD_General_Otra_Unidad' => $row['Ubicacion_Respaldo_BD_General_Otra_Unidad'],
+            'Usuario_Respaldo_BD_General_Otra_Unidad' => $row['Usuario_Respaldo_BD_General_Otra_Unidad'],
             'Dias_Sin_Acceso' => (int)$row['Dias_Sin_Acceso'],
             'Dias_Sin_Respaldo_Nube' => $row['Dias_Sin_Respaldo_Nube'] !== null ? (int)$row['Dias_Sin_Respaldo_Nube'] : null,
-            'Dias_Sin_Respaldo_Otra_Unidad' => $row['Dias_Sin_Respaldo_Otra_Unidad'] !== null ? (int)$row['Dias_Sin_Respaldo_Otra_Unidad'] : null
+            'Dias_Sin_Respaldo_Otra_Unidad' => $row['Dias_Sin_Respaldo_Otra_Unidad'] !== null ? (int)$row['Dias_Sin_Respaldo_Otra_Unidad'] : null,
+            'Dias_Sin_Respaldo_BD_General_Nube' => $row['Dias_Sin_Respaldo_BD_General_Nube'] !== null ? (int)$row['Dias_Sin_Respaldo_BD_General_Nube'] : null,
+            'Dias_Sin_Respaldo_BD_General_Otra_Unidad' => $row['Dias_Sin_Respaldo_BD_General_Otra_Unidad'] !== null ? (int)$row['Dias_Sin_Respaldo_BD_General_Otra_Unidad'] : null
         ];
     }
     $stmt->close();
@@ -146,7 +164,9 @@ try {
             COUNT(CASE WHEN Activa = 1 THEN 1 END) AS activas,
             COUNT(CASE WHEN DATEDIFF(NOW(), Ultimo_Acceso) >= 30 THEN 1 END) AS sin_acceso_30_dias,
             COUNT(CASE WHEN Fecha_Ultimo_Respaldo_Nube IS NULL OR DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Nube) >= 7 THEN 1 END) AS sin_respaldo_nube_7_dias,
-            COUNT(CASE WHEN Fecha_Ultimo_Respaldo_Otra_Unidad IS NULL OR DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Otra_Unidad) >= 7 THEN 1 END) AS sin_respaldo_otra_unidad_7_dias
+            COUNT(CASE WHEN Fecha_Ultimo_Respaldo_Otra_Unidad IS NULL OR DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_Otra_Unidad) >= 7 THEN 1 END) AS sin_respaldo_otra_unidad_7_dias,
+            COUNT(CASE WHEN Fecha_Ultimo_Respaldo_BD_General_Nube IS NULL OR DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_BD_General_Nube) >= 7 THEN 1 END) AS sin_respaldo_bd_general_nube_7_dias,
+            COUNT(CASE WHEN Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad IS NULL OR DATEDIFF(NOW(), Fecha_Ultimo_Respaldo_BD_General_Otra_Unidad) >= 7 THEN 1 END) AS sin_respaldo_bd_general_otra_unidad_7_dias
          FROM Empresas_Creadas
          WHERE RUC = ?';
     
@@ -177,6 +197,8 @@ try {
         'Sin_Acceso_30_Dias' => (int)$stats['sin_acceso_30_dias'],
         'Sin_Respaldo_Nube_7_Dias' => (int)$stats['sin_respaldo_nube_7_dias'],
         'Sin_Respaldo_Otra_Unidad_7_Dias' => (int)$stats['sin_respaldo_otra_unidad_7_dias'],
+        'Sin_Respaldo_BD_General_Nube_7_Dias' => (int)$stats['sin_respaldo_bd_general_nube_7_dias'],
+        'Sin_Respaldo_BD_General_Otra_Unidad_7_Dias' => (int)$stats['sin_respaldo_bd_general_otra_unidad_7_dias'],
         'Empresas_Creadas' => $empresas_creadas
     ];
 
