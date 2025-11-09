@@ -18,6 +18,7 @@ define('DEBUG_MODE', true);
 require_once 'Debug_Config.php';
 require_once '../shared/Conectar_BD.php';
 require_once 'Validar_Firma.php';
+require_once 'Obt_IP_Real.php';
 
 try {
     // Conexión y transacción
@@ -27,16 +28,29 @@ try {
     // Validación de la firma en la petición
     $input = validarPeticion();
 
-    $RUC                   = $input['RUC'] ?? null;
+    $RUC                   = trim($input['RUC'] ?? '');
     $Serie                 = $input['Serie'] ?? null;
     $usuario               = $input['usuario'] ?? null;
     $licencias_solicitadas = array_map('strtoupper', $input['licencias'] ?? []);
     $ping_token            = $input['ping_token'] ?? null;
+    $RUC_Empresa_Creada    = !empty($input['RUC_Empresa_Creada']) ? trim($input['RUC_Empresa_Creada']) : '';
+    $Nombre_Empresa_Creada = $input['Nombre_Empresa_Creada'] ?? '';
 
-    if (!$RUC || !$usuario || empty($licencias_solicitadas)) {
+    if (empty($RUC) || !$usuario || empty($licencias_solicitadas)) {
         throw new Exception('Datos incompletos: RUC, usuario y licencias son requeridos.', 400);
     }
-    log_debug("Datos validados - RUC: $RUC, Serie: $Serie, Usuario: $usuario");
+
+    // Validar longitud de RUC (máximo 13 dígitos)
+    if (strlen($RUC) > 13) {
+        throw new Exception('RUC excede el límite de 13 caracteres', 400);
+    }
+
+    // Validar longitud de RUC_Empresa_Creada si se proporciona
+    if (!empty($RUC_Empresa_Creada) && strlen($RUC_Empresa_Creada) > 13) {
+        throw new Exception('RUC_Empresa_Creada excede el límite de 13 caracteres', 400);
+    }
+
+    log_debug("Datos validados - RUC: $RUC, Serie: $Serie, Usuario: $usuario, RUC_Empresa_Creada: " . ($RUC_Empresa_Creada ?: 'no proporcionado'));
 
     // Mapeo códigos de licencias a descripciones para mensajes de bloqueo
     $tipo_descripcion = [
@@ -306,7 +320,150 @@ try {
         }
     }
 
-    // FASE 3: Commit y respuesta
+    // FASE 3: Registrar en Empresas_Creadas si hay licencias LSOFTW permitidas
+    // Si se proporciona RUC_Empresa_Creada, registrar esa empresa. Si no, registrar la empresa dueña.
+    $tiene_licencias_lsoftw = !empty(array_filter($licencias_permitidas, function($tipo) { 
+        return strpos($tipo, 'LSOFTW_') === 0; 
+    }));
+    
+    if ($tiene_licencias_lsoftw) {
+        try {
+            // Verificar si existe la tabla Empresas_Creadas
+            $stmt_check_table = $mysqli->prepare(
+                "SELECT 1 FROM information_schema.tables 
+                 WHERE table_schema = DATABASE() 
+                 AND table_name = 'Empresas_Creadas'"
+            );
+            $stmt_check_table->execute();
+            $table_exists = $stmt_check_table->get_result()->num_rows > 0;
+            $stmt_check_table->close();
+
+            if ($table_exists) {
+                // Determinar RUC_Creado: si se proporciona RUC_Empresa_Creada, usarlo; si no, usar el RUC dueña
+                $RUC_Creado = !empty($RUC_Empresa_Creada) ? $RUC_Empresa_Creada : $RUC;
+                $Sistema_LSOFTW = 'LSOFTW';
+                
+                // Obtener nombre de la empresa
+                // Si se proporciona Nombre_Empresa_Creada, usarlo; si no, obtenerlo de la tabla Empresas
+                $nombre_empresa = $Nombre_Empresa_Creada;
+                if (empty($nombre_empresa)) {
+                    // Intentar obtener el nombre de la empresa creada si es diferente a la dueña
+                    if ($RUC_Creado !== $RUC) {
+                        // Si es una empresa creada, el nombre debería venir en el parámetro
+                        // Pero por si acaso, intentamos buscarlo (aunque probablemente no esté en Empresas)
+                        $stmt_nombre = $mysqli->prepare('SELECT Nombre FROM Empresas WHERE RUC = ?');
+                        $stmt_nombre->bind_param('s', $RUC_Creado);
+                        $stmt_nombre->execute();
+                        $res_nombre = $stmt_nombre->get_result();
+                        if ($res_nombre->num_rows > 0) {
+                            $row_nombre = $res_nombre->fetch_assoc();
+                            $nombre_empresa = $row_nombre['Nombre'] ?? '';
+                        }
+                        $stmt_nombre->close();
+                    } else {
+                        // Si es la empresa dueña, obtener el nombre de la tabla Empresas
+                        $stmt_nombre = $mysqli->prepare('SELECT Nombre FROM Empresas WHERE RUC = ?');
+                        $stmt_nombre->bind_param('s', $RUC);
+                        $stmt_nombre->execute();
+                        $res_nombre = $stmt_nombre->get_result();
+                        if ($res_nombre->num_rows > 0) {
+                            $row_nombre = $res_nombre->fetch_assoc();
+                            $nombre_empresa = $row_nombre['Nombre'] ?? '';
+                        }
+                        $stmt_nombre->close();
+                    }
+                }
+
+                // Obtener Serie final (puede ser el generado para LSOFTW o el proporcionado)
+                $serie_final = $nuevo_serial_generado ?? $Serie;
+                if (empty($serie_final)) {
+                    // Si no hay serie, intentar obtenerla de la última licencia LSOFTW registrada
+                    $stmt_serie = $mysqli->prepare(
+                        "SELECT Serie FROM Licencias 
+                         WHERE RUC = ? AND Sistema = 'LSOFTW' 
+                         ORDER BY Ultimo_Acceso DESC LIMIT 1"
+                    );
+                    $stmt_serie->bind_param('s', $RUC);
+                    $stmt_serie->execute();
+                    $res_serie = $stmt_serie->get_result();
+                    if ($res_serie->num_rows > 0) {
+                        $row_serie = $res_serie->fetch_assoc();
+                        $serie_final = $row_serie['Serie'];
+                    }
+                    $stmt_serie->close();
+                }
+
+                if (!empty($serie_final)) {
+                    // Obtener información de la máquina (para web, usar el nombre de máquina si está disponible)
+                    $nombre_maquina = '';
+                    if (isset($input['info_nav'])) {
+                        $info_nav = $input['info_nav'];
+                        $navegador = 'Unknown';
+                        if (strpos($info_nav, 'Chrome') !== false) {
+                            $navegador = 'Chrome';
+                        } elseif (strpos($info_nav, 'Firefox') !== false) {
+                            $navegador = 'Firefox';
+                        } elseif (strpos($info_nav, 'Safari') !== false) {
+                            $navegador = 'Safari';
+                        } elseif (strpos($info_nav, 'Edge') !== false) {
+                            $navegador = 'Edge';
+                        }
+                        $hash_nav = substr(md5($info_nav), 0, 8);
+                        $nombre_maquina = 'Web_' . $navegador . '_' . $hash_nav;
+                    }
+                    
+                    $ip = Obt_IP_Real();
+
+                    // Verificar si ya existe un registro para esta combinación (sin Sistema, ya que ahora es único por RUC + RUC_Creado)
+                    $stmt_check = $mysqli->prepare(
+                        'SELECT id, Sistema FROM Empresas_Creadas 
+                         WHERE RUC = ? AND RUC_Creado = ?'
+                    );
+                    $stmt_check->bind_param('ss', $RUC, $RUC_Creado);
+                    $stmt_check->execute();
+                    $res_check = $stmt_check->get_result();
+                    $existe = $res_check->fetch_assoc();
+                    $stmt_check->close();
+
+                    if ($existe) {
+                        // Actualizar registro existente
+                        // Actualizar Sistema a LSOFTW ya que es el sistema más reciente desde el que se accedió
+                        $stmt_upd = $mysqli->prepare(
+                            'UPDATE Empresas_Creadas SET 
+                                Serie = ?,
+                                Sistema = ?,
+                                Nombre_Empresa = COALESCE(?, Nombre_Empresa),
+                                Ultimo_Acceso = NOW(),
+                                IP = ?,
+                                Maquina = COALESCE(?, Maquina),
+                                Activa = 1
+                             WHERE id = ?'
+                        );
+                        $stmt_upd->bind_param('sssssi', $serie_final, $Sistema_LSOFTW, $nombre_empresa, $ip, $nombre_maquina, $existe['id']);
+                        $stmt_upd->execute();
+                        $stmt_upd->close();
+                        log_debug("Empresa creada actualizada para LSOFTW: RUC=$RUC, RUC_Creado=$RUC_Creado (Sistema actualizado a LSOFTW)");
+                    } else {
+                        // Crear nuevo registro
+                        $stmt_ins = $mysqli->prepare(
+                            'INSERT INTO Empresas_Creadas 
+                                (RUC, RUC_Creado, Serie, Sistema, Nombre_Empresa, IP, Maquina, Fecha_Creacion, Ultimo_Acceso, Activa)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)'
+                        );
+                        $stmt_ins->bind_param('sssssss', $RUC, $RUC_Creado, $serie_final, $Sistema_LSOFTW, $nombre_empresa, $ip, $nombre_maquina);
+                        $stmt_ins->execute();
+                        $stmt_ins->close();
+                        log_debug("Empresa creada registrada para LSOFTW: RUC=$RUC, RUC_Creado=$RUC_Creado");
+                    }
+                }
+            }
+        } catch (Exception $e_creada) {
+            // No fallar el registro de sesión si hay error al registrar empresa creada
+            log_debug("Error al registrar empresa creada para LSOFTW: " . $e_creada->getMessage());
+        }
+    }
+
+    // FASE 4: Commit y respuesta
     $mysqli->commit();
     log_debug('Commit exitoso');
     log_debug('Resumen final - Permitidas: ' . json_encode($licencias_permitidas) . ', Bloqueadas: ' . json_encode($licencias_bloqueadas));
